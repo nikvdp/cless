@@ -25,12 +25,6 @@ func main() {
 		log.Fatalf("Error opening pty: %v\n", err)
 	}
 	defer ptmx.Close()
-	defer tty.Close()
-
-	// Set the PTY as Stdin, Stdout, and Stderr.
-	c.Stdin = tty
-	c.Stdout = tty
-	c.Stderr = tty
 
 	// Add the PTY to ExtraFiles and set Ctty to 3.
 	c.ExtraFiles = []*os.File{tty}
@@ -38,14 +32,41 @@ func main() {
 		Ctty: 3,
 	}
 
+	// Redirect the command's Stdin, Stdout, and Stderr to the PTY slave.
+	c.Stdin = tty
+	c.Stdout = tty
+	c.Stderr = tty
+
 	// Start the command with the PTY.
 	if err := c.Start(); err != nil {
 		log.Fatalf("Error starting command: %v\n", err)
 	}
 
-	// Copy the PTY master's output to the standard output.
-	if _, err := io.Copy(os.Stdout, ptmx); err != nil {
-		log.Fatalf("Error copying output to stdout: %v\n", err)
+	// Close the PTY slave to allow the PTY master to detect EOF.
+	tty.Close()
+
+	// Create a pipe to transfer data from the PTY to the "less" command.
+	reader, writer := io.Pipe()
+
+	// Copy the PTY master's output to the writer end of the pipe.
+	go func() {
+		defer writer.Close()
+		io.Copy(writer, ptmx)
+	}()
+
+	// Create the "less -R" command.
+	less := exec.Command("less", "-R")
+
+	// Connect the "less" command's Stdin to the reader end of the pipe.
+	less.Stdin = reader
+
+	// Connect the "less" command's Stdout and Stderr to the terminal.
+	less.Stdout = os.Stdout
+	less.Stderr = os.Stderr
+
+	// Run the "less" command.
+	if err := less.Run(); err != nil {
+		log.Fatalf("Error running 'less -R': %v\n", err)
 	}
 
 	// Wait for the command to complete.

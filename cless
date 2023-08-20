@@ -4,37 +4,34 @@ import os
 import sys
 import subprocess
 
+
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: cless <command> [args ...]")
-        return
-
-    def read(fd):
-        return os.read(fd, 1024)
-
     master, slave = pty.openpty()
-    pid = os.fork()
-
-    if pid == 0:  # Child process
-        os.close(master)
-        os.dup2(slave, 1)
-        os.dup2(slave, 2)
-        os.execvp(sys.argv[1], sys.argv[1:])
-    else:  # Parent process
+    if len(sys.argv) > 1:
+        pid = os.fork()
+        if pid == 0:  # Child process
+            os.close(master)
+            os.dup2(slave, 1)
+            os.dup2(slave, 2)
+            os.execvp(sys.argv[1], sys.argv[1:])
         os.close(slave)
-        output = b""
-        while True:
-            try:
-                data = read(master)
-                if not data:
-                    break
-                output += data
-            except OSError:
+    else:
+        os.write(slave, sys.stdin.buffer.read())
+        os.close(slave)
+
+    output = b""
+    while True:
+        try:
+            data = os.read(master, 1024)
+            if not data:
                 break
-        os.close(master)
-        less_process = subprocess.Popen(["less", "-R"], stdin=subprocess.PIPE)
-        less_process.communicate(input=output)
+            output += data
+        except OSError:
+            break
+    os.close(master)
+    less_process = subprocess.Popen(["less", "-R"], stdin=subprocess.PIPE)
+    less_process.communicate(input=output)
+
 
 if __name__ == "__main__":
     main()
-

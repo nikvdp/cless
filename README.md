@@ -25,3 +25,8 @@ cless ls --color=auto  # output will be colored
 `cless` can only do it's magic if it can control how the process is started)
 
 
+### misc
+
+there's also a python version of `cless` in the `python` branch
+
+

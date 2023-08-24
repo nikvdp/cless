@@ -1,18 +1,23 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
+	"golang.org/x/crypto/ssh/terminal"
+	// "golang.org/x/sys/unix"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Println("Usage: cless <command> [args ...]")
+		log.Println("Usage: timer <command> [args ...]")
 		return
 	}
 
@@ -45,33 +50,39 @@ func main() {
 	// Close the PTY slave to allow the PTY master to detect EOF.
 	tty.Close()
 
-	// Create a pipe to transfer data from the PTY to the "less" command.
-	reader, writer := io.Pipe()
-
-	// Copy the PTY master's output to the writer end of the pipe.
+	// Handle terminal resizes.
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGWINCH)
 	go func() {
-		defer writer.Close()
-		io.Copy(writer, ptmx)
+		for range ch {
+			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
+				log.Fatalf("Error resizing pty: %v", err)
+			}
+		}
+	}()
+	ch <- syscall.SIGWINCH
+
+	// Timer function to display in the lower right corner.
+	go func() {
+		for {
+			width, height, _ := terminal.GetSize(0)
+			fmt.Printf("\033[s\033[%d;%dH\033[7m%v\033[m\033[u", height, width-len(time.Now().Format("15:04:05"))-1, time.Now().Format("15:04:05"))
+			time.Sleep(1 * time.Second)
+		}
 	}()
 
-	// Create the "less -R" command.
-	less := exec.Command("less", "-R")
+	// Copy the PTY master's output to stdout.
+	go func() {
+		io.Copy(os.Stdout, ptmx)
+	}()
 
-	// Connect the "less" command's Stdin to the reader end of the pipe.
-	less.Stdin = reader
-
-	// Connect the "less" command's Stdout and Stderr to the terminal.
-	less.Stdout = os.Stdout
-	less.Stderr = os.Stderr
-
-	// Run the "less" command.
-	if err := less.Run(); err != nil {
-		log.Fatalf("Error running 'less -R': %v\n", err)
-	}
+	// Copy stdin to the PTY master's input.
+	go func() {
+		io.Copy(ptmx, os.Stdin)
+	}()
 
 	// Wait for the command to complete.
 	if err := c.Wait(); err != nil {
 		log.Fatalf("Error waiting for command: %v\n", err)
 	}
 }
-

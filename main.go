@@ -15,19 +15,32 @@ import (
 )
 
 func main() {
-	var loc string
+	var loc, style string
 	var commandIndex int
 
-	if len(os.Args) > 2 && os.Args[1] == "--loc" {
-		loc = os.Args[2]
-		commandIndex = 3
-	} else {
-		loc = "lr"
-		commandIndex = 1
+	if len(os.Args) > 2 {
+		if os.Args[1] == "--loc" {
+			loc = os.Args[2]
+			commandIndex += 2
+		}
+		if os.Args[commandIndex+1] == "--style" {
+			style = os.Args[commandIndex+2]
+			commandIndex += 2
+		}
 	}
 
+	if loc == "" {
+		loc = "lr"
+	}
+
+	if style == "" {
+		style = "stopwatch"
+	}
+
+	commandIndex += 1
+
 	if commandIndex >= len(os.Args) {
-		log.Println("Usage: timer [--loc ur|ul|ll|lr] <command> [args ...]")
+		log.Println("Usage: timer [--loc ur|ul|ll|lr] [--style clock|stopwatch] <command> [args ...]")
 		return
 	}
 
@@ -81,11 +94,19 @@ func main() {
 	}()
 	ch <- syscall.SIGWINCH // Trigger initial resize
 
+	startTime := time.Now()
+
 	// Timer function to display in the specified corner.
 	go func() {
 		for {
 			width, height, _ := terminal.GetSize(0)
-			timerString := time.Now().Format("15:04:05")
+			var timerString string
+			if style == "clock" {
+				timerString = time.Now().Format("15:04:05")
+			} else { // "stopwatch"
+				elapsedTime := time.Since(startTime)
+				timerString = fmt.Sprintf("%02d:%02d:%02d", int(elapsedTime.Hours()), int(elapsedTime.Minutes())%60, int(elapsedTime.Seconds())%60)
+			}
 			row, col := getTimerPosition(loc, width, height, len(timerString))
 			fmt.Printf("\033[s\033[%d;%dH\033[7m%v\033[m\033[u", row, col, timerString)
 			time.Sleep(1 * time.Second)

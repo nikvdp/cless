@@ -60,6 +60,13 @@ func main() {
 	// Close the PTY slave to allow the PTY master to detect EOF.
 	tty.Close()
 
+	// Set terminal to raw mode
+	oldState, err := terminal.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		log.Fatalf("Error setting terminal to raw mode: %v\n", err)
+	}
+	defer terminal.Restore(int(os.Stdin.Fd()), oldState)
+
 	// Handle terminal resizes.
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGWINCH)

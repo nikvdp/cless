@@ -12,17 +12,27 @@ import (
 
 	"github.com/creack/pty"
 	"golang.org/x/crypto/ssh/terminal"
-	// "golang.org/x/sys/unix"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		log.Println("Usage: timer <command> [args ...]")
+	var loc string
+	var commandIndex int
+
+	if len(os.Args) > 2 && os.Args[1] == "--loc" {
+		loc = os.Args[2]
+		commandIndex = 3
+	} else {
+		loc = "lr"
+		commandIndex = 1
+	}
+
+	if commandIndex >= len(os.Args) {
+		log.Println("Usage: timer [--loc ur|ul|ll|lr] <command> [args ...]")
 		return
 	}
 
 	// Create the command.
-	c := exec.Command(os.Args[1], os.Args[2:]...)
+	c := exec.Command(os.Args[commandIndex], os.Args[commandIndex+1:]...)
 
 	// Create a PTY.
 	ptmx, tty, err := pty.Open()
@@ -58,15 +68,19 @@ func main() {
 			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
 				log.Fatalf("Error resizing pty: %v", err)
 			}
+			// Forward the signal to the child process.
+			c.Process.Signal(syscall.SIGWINCH)
 		}
 	}()
-	ch <- syscall.SIGWINCH
+	ch <- syscall.SIGWINCH // Trigger initial resize
 
-	// Timer function to display in the lower right corner.
+	// Timer function to display in the specified corner.
 	go func() {
 		for {
 			width, height, _ := terminal.GetSize(0)
-			fmt.Printf("\033[s\033[%d;%dH\033[7m%v\033[m\033[u", height, width-len(time.Now().Format("15:04:05"))-1, time.Now().Format("15:04:05"))
+			timerString := time.Now().Format("15:04:05")
+			row, col := getTimerPosition(loc, width, height, len(timerString))
+			fmt.Printf("\033[s\033[%d;%dH\033[7m%v\033[m\033[u", row, col, timerString)
 			time.Sleep(1 * time.Second)
 		}
 	}()
@@ -84,5 +98,18 @@ func main() {
 	// Wait for the command to complete.
 	if err := c.Wait(); err != nil {
 		log.Fatalf("Error waiting for command: %v\n", err)
+	}
+}
+
+func getTimerPosition(loc string, width, height, timerLength int) (int, int) {
+	switch loc {
+	case "ur":
+		return 1, width - timerLength - 1
+	case "ul":
+		return 1, 1
+	case "ll":
+		return height, 1
+	default: // "lr"
+		return height, width - timerLength - 1
 	}
 }

@@ -82,16 +82,20 @@ func main() {
 	}
 	defer terminal.Restore(int(os.Stdin.Fd()), oldState)
 
-	// Handle terminal resizes.
+	// Handle terminal resizes and interrupt signal.
 	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGWINCH)
+	signal.Notify(ch, syscall.SIGWINCH, syscall.SIGINT)
 	go func() {
-		for range ch {
-			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
-				log.Fatalf("Error resizing pty: %v", err)
+		for sig := range ch {
+			if sig == syscall.SIGWINCH {
+				if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
+					log.Fatalf("Error resizing pty: %v", err)
+				}
+				// Forward the signal to the child process.
+				c.Process.Signal(syscall.SIGWINCH)
+			} else if sig == syscall.SIGINT {
+				c.Process.Signal(syscall.SIGINT)
 			}
-			// Forward the signal to the child process.
-			c.Process.Signal(syscall.SIGWINCH)
 		}
 	}()
 	ch <- syscall.SIGWINCH // Trigger initial resize

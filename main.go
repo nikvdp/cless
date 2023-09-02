@@ -14,6 +14,8 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
+const APP_NAME = "cless"
+
 func main() {
 	var loc, style string
 	var commandIndex int
@@ -39,8 +41,8 @@ func main() {
 
 	commandIndex += 1
 
-	if commandIndex >= len(os.Args) {
-		log.Println("Usage: timer [--loc ur|ul|ll|lr] [--style clock|stopwatch] <command> [args ...]")
+	if commandIndex >= len(os.Args) || os.Args[commandIndex] == "--help" || os.Args[commandIndex] == "-h" {
+		fmt.Fprintf(os.Stderr, "Usage: %s [--loc ur|ul|ll|lr] [--style clock|stopwatch] <command> [args ...]\n", APP_NAME)
 		return
 	}
 
